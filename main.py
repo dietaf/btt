@@ -360,20 +360,7 @@ class MLOptimizer:
 # ===================================================================
 
 class ProfessionalTradingBot:
-    _instance = None
-    _lock = threading.Lock()
-    
-    def __new__(cls):
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-        return cls._instance
-    
-    def __init__(self, pair="EURUSD=X"):
-        if hasattr(self, '_initialized'):
-            return
-        
+    def __init__(self):
         self.db = TradingDatabase()
         self.backtest_engine = BacktestEngine(self.db)
         self.ml_optimizer = MLOptimizer(self.db)
@@ -384,9 +371,7 @@ class ProfessionalTradingBot:
         self.equity_history = deque(maxlen=1000)
         self.logs = deque(maxlen=100)
         
-        self._initialized = True
-        
-        self.pair = pair
+        self.pair = "EURUSD=X"
         self.pair_name = "EUR/USD"
         self.strategy = "TrendShift"
         self.timeframe = "1h"
@@ -399,24 +384,9 @@ class ProfessionalTradingBot:
         self.learned_params = None
         self.patterns = None
         
-        if not hasattr(self, '_logged_init'):
-            self.log("✅ Bot Professional inicializado", "success")
-            self.log("🧠 Machine Learning activado", "info")
-            self.log("💾 Base de datos conectada", "info")
-            self._logged_init = True
-    
-    def configure(self, pair, pair_name, strategy, timeframe, balance, risk_pct, min_conf):
-        """Configura el bot (solo si no está corriendo)"""
-        if not self.is_running:
-            self.pair = pair
-            self.pair_name = pair_name
-            self.strategy = strategy
-            self.timeframe = timeframe
-            self.balance = balance
-            self.risk_per_trade = risk_pct
-            self.min_confidence = min_conf
-            return True
-        return False
+        self.log("✅ Bot Professional inicializado", "success")
+        self.log("🧠 Machine Learning activado", "info")
+        self.log("💾 Base de datos conectada", "info")
     
     def log(self, message, level="info"):
         """Registra eventos"""
@@ -913,8 +883,11 @@ def main():
     st.title("🧠 Bot Trading Profesional - ML + SQLite")
     st.markdown("### Machine Learning | Auto-Optimización | Backtesting")
     
-    # Obtener instancia única del bot
-    bot = ProfessionalTradingBot()
+    # Inicializar bot en session_state
+    if 'bot' not in st.session_state:
+        st.session_state.bot = ProfessionalTradingBot()
+    
+    bot = st.session_state.bot
     
     with st.sidebar:
         st.markdown("---")
@@ -965,23 +938,22 @@ def main():
         with col1:
             if st.button("▶️ INICIAR", use_container_width=True, type="primary", disabled=bot.is_running):
                 with st.spinner("Iniciando bot..."):
-                    if bot.configure(
-                        pair_options[selected_pair],
-                        selected_pair,
-                        strategy,
-                        timeframe,
-                        balance,
-                        risk_pct,
-                        min_confidence
-                    ):
-                        if bot.start():
-                            st.success("✅ Bot iniciado! Revisa los logs abajo")
-                            time.sleep(2)
-                            st.rerun()
-                        else:
-                            st.error("❌ Error al iniciar bot - Revisa logs")
+                    # Configurar bot
+                    bot.pair = pair_options[selected_pair]
+                    bot.pair_name = selected_pair
+                    bot.strategy = strategy
+                    bot.timeframe = timeframe
+                    bot.balance = balance
+                    bot.risk_per_trade = risk_pct
+                    bot.min_confidence = min_confidence
+                    
+                    # Iniciar
+                    if bot.start():
+                        st.success("✅ Bot iniciado! Revisa los logs abajo")
+                        time.sleep(2)
+                        st.rerun()
                     else:
-                        st.warning("⚠️ Bot ya está corriendo")
+                        st.error("❌ Error al iniciar bot - Revisa logs")
         
         with col2:
             if st.button("⏹️ DETENER", use_container_width=True, disabled=not bot.is_running):
