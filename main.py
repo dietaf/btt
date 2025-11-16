@@ -757,24 +757,33 @@ class ProfessionalTradingBot:
         """Loop principal"""
         self.log("🤖 Bot iniciado (Machine Learning activo)", "success")
         
-        self.update_learned_params()
+        try:
+            self.update_learned_params()
+        except Exception as e:
+            self.log(f"⚠️ Error en ML inicial: {str(e)}", "warning")
         
         while self.is_running:
             try:
                 if datetime.now().weekday() >= 5:
-                    self.log("⏰ Fin de semana", "warning")
+                    self.log("⏰ Fin de semana - Mercado cerrado", "warning")
                     time.sleep(3600)
                     continue
                 
+                self.log("📊 Obteniendo datos históricos...", "info")
                 df = self.get_historical_data(self.pair, self.timeframe)
                 if df is None or len(df) < 30:
+                    self.log("⚠️ Sin datos suficientes, reintentando...", "warning")
                     time.sleep(30)
                     continue
                 
+                self.log("💹 Obteniendo precio actual...", "info")
                 current_price = self.get_current_price(self.pair)
                 if not current_price:
+                    self.log("⚠️ No se pudo obtener precio, reintentando...", "warning")
                     time.sleep(30)
                     continue
+                
+                self.log(f"✅ Precio actual: {current_price:.5f}", "success")
                 
                 indicators = self.calculate_indicators(df)
                 
@@ -788,11 +797,17 @@ class ProfessionalTradingBot:
                     if signal != 0:
                         self.log(f"🎯 Señal: {'COMPRA' if signal == 1 else 'VENTA'} (Conf: {confidence*100:.0f}%)", "info")
                         self.open_position(signal, current_price, indicators, confidence)
+                    else:
+                        self.log("⏳ Sin señales, esperando...", "info")
                 
-                time.sleep(60 if "m" in self.timeframe else 300)
+                wait_time = 60 if "m" in self.timeframe else 300
+                self.log(f"⏰ Próxima verificación en {wait_time}s", "info")
+                time.sleep(wait_time)
                 
             except Exception as e:
-                self.log(f"❌ Error: {str(e)}", "error")
+                self.log(f"❌ Error en loop: {str(e)}", "error")
+                import traceback
+                self.log(f"📋 Traceback: {traceback.format_exc()}", "error")
                 time.sleep(60)
         
         self.log("🛑 Bot detenido", "warning")
@@ -801,10 +816,19 @@ class ProfessionalTradingBot:
         """Inicia bot"""
         if not self.is_running:
             self.is_running = True
-            thread = threading.Thread(target=self.trading_loop, daemon=True)
-            thread.start()
-            return True
-        return False
+            self.log("🚀 Iniciando bot...", "info")
+            try:
+                thread = threading.Thread(target=self.trading_loop, daemon=True)
+                thread.start()
+                self.log("✅ Thread iniciado correctamente", "success")
+                return True
+            except Exception as e:
+                self.log(f"❌ Error al iniciar thread: {str(e)}", "error")
+                self.is_running = False
+                return False
+        else:
+            self.log("⚠️ Bot ya está corriendo", "warning")
+            return False
     
     def stop(self):
         """Detiene bot"""
@@ -840,7 +864,7 @@ def main():
         with col2:
             st.markdown("### 🔑 Iniciar Sesión")
             
-            MASTER_PASSWORD = "Trading2025$"
+            MASTER_PASSWORD = "Trading2024$"
             
             password = st.text_input("Contraseña:", type="password", key="password_input")
             
@@ -940,21 +964,24 @@ def main():
         
         with col1:
             if st.button("▶️ INICIAR", use_container_width=True, type="primary", disabled=bot.is_running):
-                if bot.configure(
-                    pair_options[selected_pair],
-                    selected_pair,
-                    strategy,
-                    timeframe,
-                    balance,
-                    risk_pct,
-                    min_confidence
-                ):
-                    if bot.start():
-                        st.success("✅ Bot iniciado!")
-                        time.sleep(1)
-                        st.rerun()
-                else:
-                    st.warning("⚠️ Bot ya está corriendo")
+                with st.spinner("Iniciando bot..."):
+                    if bot.configure(
+                        pair_options[selected_pair],
+                        selected_pair,
+                        strategy,
+                        timeframe,
+                        balance,
+                        risk_pct,
+                        min_confidence
+                    ):
+                        if bot.start():
+                            st.success("✅ Bot iniciado! Revisa los logs abajo")
+                            time.sleep(2)
+                            st.rerun()
+                        else:
+                            st.error("❌ Error al iniciar bot - Revisa logs")
+                    else:
+                        st.warning("⚠️ Bot ya está corriendo")
         
         with col2:
             if st.button("⏹️ DETENER", use_container_width=True, disabled=not bot.is_running):
