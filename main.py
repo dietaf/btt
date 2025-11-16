@@ -360,7 +360,20 @@ class MLOptimizer:
 # ===================================================================
 
 class ProfessionalTradingBot:
+    _instance = None
+    _lock = threading.Lock()
+    
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+        return cls._instance
+    
     def __init__(self, pair="EURUSD=X"):
+        if hasattr(self, '_initialized'):
+            return
+        
         self.db = TradingDatabase()
         self.backtest_engine = BacktestEngine(self.db)
         self.ml_optimizer = MLOptimizer(self.db)
@@ -370,6 +383,8 @@ class ProfessionalTradingBot:
         self.balance = 10000
         self.equity_history = deque(maxlen=1000)
         self.logs = deque(maxlen=100)
+        
+        self._initialized = True
         
         self.pair = pair
         self.pair_name = "EUR/USD"
@@ -384,9 +399,24 @@ class ProfessionalTradingBot:
         self.learned_params = None
         self.patterns = None
         
-        self.log("✅ Bot Professional inicializado", "success")
-        self.log("🧠 Machine Learning activado", "info")
-        self.log("💾 Base de datos conectada", "info")
+        if not hasattr(self, '_logged_init'):
+            self.log("✅ Bot Professional inicializado", "success")
+            self.log("🧠 Machine Learning activado", "info")
+            self.log("💾 Base de datos conectada", "info")
+            self._logged_init = True
+    
+    def configure(self, pair, pair_name, strategy, timeframe, balance, risk_pct, min_conf):
+        """Configura el bot (solo si no está corriendo)"""
+        if not self.is_running:
+            self.pair = pair
+            self.pair_name = pair_name
+            self.strategy = strategy
+            self.timeframe = timeframe
+            self.balance = balance
+            self.risk_per_trade = risk_pct
+            self.min_confidence = min_conf
+            return True
+        return False
     
     def log(self, message, level="info"):
         """Registra eventos"""
@@ -859,9 +889,8 @@ def main():
     st.title("🧠 Bot Trading Profesional - ML + SQLite")
     st.markdown("### Machine Learning | Auto-Optimización | Backtesting")
     
-    if 'bot' not in st.session_state:
-        st.session_state.bot = None
-        st.session_state.bot_running = False
+    # Obtener instancia única del bot
+    bot = ProfessionalTradingBot()
     
     with st.sidebar:
         st.markdown("---")
@@ -910,37 +939,36 @@ def main():
         col1, col2 = st.columns(2)
         
         with col1:
-            if st.button("▶️ INICIAR", use_container_width=True, type="primary"):
-                bot = ProfessionalTradingBot()
-                bot.pair = pair_options[selected_pair]
-                bot.pair_name = selected_pair
-                bot.strategy = strategy
-                bot.timeframe = timeframe
-                bot.balance = balance
-                bot.risk_per_trade = risk_pct
-                bot.min_confidence = min_confidence
-                
-                st.session_state.bot = bot
-                
-                if bot.start():
-                    st.session_state.bot_running = True
-                    st.success("✅ Bot iniciado!")
-                    st.rerun()
+            if st.button("▶️ INICIAR", use_container_width=True, type="primary", disabled=bot.is_running):
+                if bot.configure(
+                    pair_options[selected_pair],
+                    selected_pair,
+                    strategy,
+                    timeframe,
+                    balance,
+                    risk_pct,
+                    min_confidence
+                ):
+                    if bot.start():
+                        st.success("✅ Bot iniciado!")
+                        time.sleep(1)
+                        st.rerun()
+                else:
+                    st.warning("⚠️ Bot ya está corriendo")
         
         with col2:
-            if st.button("⏹️ DETENER", use_container_width=True):
-                if st.session_state.bot:
-                    st.session_state.bot.stop()
-                    st.session_state.bot_running = False
-                    st.warning("🛑 Bot detenido")
-                    st.rerun()
+            if st.button("⏹️ DETENER", use_container_width=True, disabled=not bot.is_running):
+                bot.stop()
+                st.warning("🛑 Bot detenido")
+                time.sleep(1)
+                st.rerun()
         
-        if st.session_state.bot and st.button("🧠 Optimizar Ahora", use_container_width=True):
-            st.session_state.bot.update_learned_params()
+        if bot.is_running and st.button("🧠 Optimizar Ahora", use_container_width=True):
+            bot.update_learned_params()
             st.success("✅ Parámetros actualizados")
             st.rerun()
     
-    if st.session_state.bot and st.session_state.bot_running:
+    if bot.is_running:
         bot = st.session_state.bot
         
         st.markdown(f"""
