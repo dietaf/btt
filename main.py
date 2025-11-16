@@ -32,17 +32,22 @@ st.set_page_config(
 # BOT GLOBAL (persiste entre sesiones)
 # ===================================================================
 
-_global_bot = None
-_global_bot_lock = threading.Lock()
+# Variable global para almacenar la instancia única del bot
+if 'global_bot_instance' not in globals():
+    global_bot_instance = None
+    global_bot_lock = threading.Lock()
 
 def get_global_bot():
-    """Obtiene la instancia global del bot"""
-    global _global_bot
-    if _global_bot is None:
-        with _global_bot_lock:
-            if _global_bot is None:
-                _global_bot = ProfessionalTradingBot()
-    return _global_bot
+    """Obtiene o crea la instancia global del bot"""
+    global global_bot_instance
+    global global_bot_lock
+    
+    if global_bot_instance is None:
+        with global_bot_lock:
+            if global_bot_instance is None:
+                global_bot_instance = ProfessionalTradingBot()
+    
+    return global_bot_instance
 
 # ===================================================================
 # CLASE DE BASE DE DATOS
@@ -58,6 +63,7 @@ class TradingDatabase:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
+        # Tabla de trades
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS trades (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -85,6 +91,7 @@ class TradingDatabase:
         )
         ''')
         
+        # Tabla de parámetros optimizados
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS optimal_params (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -101,6 +108,7 @@ class TradingDatabase:
         )
         ''')
         
+        # Tabla de performance por hora
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS hourly_performance (
             hour INTEGER,
@@ -113,6 +121,78 @@ class TradingDatabase:
         )
         ''')
         
+        # Tabla de estado del bot (para Auto-Resume)
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS bot_state (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            is_running INTEGER,
+            pair TEXT,
+            pair_name TEXT,
+            strategy TEXT,
+            timeframe TEXT,
+            balance REAL,
+            risk_per_trade REAL,
+            min_confidence REAL,
+            last_updated DATETIME
+        )
+        ''')
+        
+        conn.commit()
+        conn.close()
+    
+    def save_bot_state(self, bot_config):
+        """Guarda el estado del bot para Auto-Resume"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+        INSERT OR REPLACE INTO bot_state (
+            id, is_running, pair, pair_name, strategy, timeframe,
+            balance, risk_per_trade, min_confidence, last_updated
+        ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            1 if bot_config['is_running'] else 0,
+            bot_config['pair'],
+            bot_config['pair_name'],
+            bot_config['strategy'],
+            bot_config['timeframe'],
+            bot_config['balance'],
+            bot_config['risk_per_trade'],
+            bot_config['min_confidence'],
+            datetime.now()
+        ))
+        
+        conn.commit()
+        conn.close()
+    
+    def load_bot_state(self):
+        """Carga el estado guardado del bot"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT * FROM bot_state WHERE id = 1')
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return {
+                'is_running': bool(row[1]),
+                'pair': row[2],
+                'pair_name': row[3],
+                'strategy': row[4],
+                'timeframe': row[5],
+                'balance': row[6],
+                'risk_per_trade': row[7],
+                'min_confidence': row[8],
+                'last_updated': row[9]
+            }
+        return None
+    
+    def clear_bot_state(self):
+        """Limpia el estado del bot (cuando se detiene)"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('UPDATE bot_state SET is_running = 0 WHERE id = 1')
         conn.commit()
         conn.close()
     
@@ -803,14 +883,20 @@ class ProfessionalTradingBot:
         if not self.is_running:
             self.is_running = True
             self.log("🚀 Iniciando bot...", "info")
+            
+            # Guardar estado en DB
+            self.save_state()
+            
             try:
                 thread = threading.Thread(target=self.trading_loop, daemon=True)
                 thread.start()
                 self.log("✅ Thread iniciado correctamente", "success")
+                self.log("💾 Estado guardado para Auto-Resume", "info")
                 return True
             except Exception as e:
                 self.log(f"❌ Error al iniciar thread: {str(e)}", "error")
                 self.is_running = False
+                self.db.clear_bot_state()
                 return False
         else:
             self.log("⚠️ Bot ya está corriendo", "warning")
@@ -819,10 +905,52 @@ class ProfessionalTradingBot:
     def stop(self):
         """Detiene bot"""
         self.is_running = False
+        
+        # Limpiar estado en DB
+        self.db.clear_bot_state()
+        self.log("💾 Estado limpiado de DB", "info")
+        
         if self.current_position:
             price = self.get_current_price(self.pair)
             if price:
                 self.close_position("Bot detenido", price)
+    
+    def save_state(self):
+        """Guarda el estado actual del bot"""
+        config = {
+            'is_running': self.is_running,
+            'pair': self.pair,
+            'pair_name': self.pair_name,
+            'strategy': self.strategy,
+            'timeframe': self.timeframe,
+            'balance': self.balance,
+            'risk_per_trade': self.risk_per_trade,
+            'min_confidence': self.min_confidence
+        }
+        self.db.save_bot_state(config)
+    
+    def load_and_resume(self):
+        """Carga estado guardado y resume operación"""
+        saved_state = self.db.load_bot_state()
+        
+        if saved_state and saved_state['is_running']:
+            # Restaurar configuración
+            self.pair = saved_state['pair']
+            self.pair_name = saved_state['pair_name']
+            self.strategy = saved_state['strategy']
+            self.timeframe = saved_state['timeframe']
+            self.balance = saved_state['balance']
+            self.risk_per_trade = saved_state['risk_per_trade']
+            self.min_confidence = saved_state['min_confidence']
+            
+            self.log("🔄 Estado anterior detectado", "info")
+            self.log(f"📊 Resumiendo: {self.strategy} en {self.pair_name}", "success")
+            
+            # Reiniciar bot automáticamente
+            self.is_running = False  # Reset para poder iniciar
+            return self.start()
+        
+        return False
 
 # ===================================================================
 # INTERFAZ STREAMLIT
@@ -850,7 +978,7 @@ def main():
         with col2:
             st.markdown("### 🔑 Iniciar Sesión")
             
-            MASTER_PASSWORD = "Trading2025$"
+            MASTER_PASSWORD = "Trading2024$"
             
             password = st.text_input("Contraseña:", type="password", key="password_input")
             
@@ -887,6 +1015,7 @@ def main():
                 🔒 Protegido por contraseña<br>
                 🧠 Machine Learning Activado<br>
                 💾 SQLite Database<br>
+                🔄 Auto-Resume habilitado
             </div>
             """, unsafe_allow_html=True)
         
@@ -901,6 +1030,14 @@ def main():
     
     # Obtener bot global (persiste entre sesiones)
     bot = get_global_bot()
+    
+    # AUTO-RESUME: Intentar reanudar automáticamente
+    if 'auto_resume_checked' not in st.session_state:
+        st.session_state.auto_resume_checked = True
+        if bot.load_and_resume():
+            st.success("🔄 Bot reanudado automáticamente!")
+            time.sleep(2)
+            st.rerun()
     
     with st.sidebar:
         st.markdown("---")
@@ -917,7 +1054,32 @@ def main():
                 "✅ Auto-Optimización\n"
                 "✅ Backtesting\n"
                 "✅ Stop Loss Inteligente\n"
-                "✅ Position Sizing Adaptativo")
+                "✅ Position Sizing Adaptativo\n"
+                "✅ **Auto-Resume (Nuevo!)**")
+        
+        st.divider()
+        
+        # Mostrar estado guardado si existe
+        saved_state = bot.db.load_bot_state()
+        if saved_state:
+            if saved_state['is_running'] and not bot.is_running:
+                st.warning(f"""
+                🔄 **Estado anterior detectado:**
+                
+                - Estrategia: {saved_state['strategy']}
+                - Par: {saved_state['pair_name']}
+                - Timeframe: {saved_state['timeframe']}
+                
+                Recarga la página para reanudar automáticamente.
+                """)
+            elif bot.is_running:
+                st.success(f"""
+                ✅ **Bot Activo:**
+                
+                - {saved_state['strategy']} 
+                - {saved_state['pair_name']}
+                - {saved_state['timeframe']}
+                """)
         
         st.divider()
         
