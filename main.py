@@ -864,7 +864,7 @@ def main():
         with col2:
             st.markdown("### 🔑 Iniciar Sesión")
             
-            MASTER_PASSWORD = "Trading2024$"
+            MASTER_PASSWORD = "Trading2025$"
             
             password = st.text_input("Contraseña:", type="password", key="password_input")
             
