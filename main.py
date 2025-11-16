@@ -29,6 +29,22 @@ st.set_page_config(
 )
 
 # ===================================================================
+# BOT GLOBAL (persiste entre sesiones)
+# ===================================================================
+
+_global_bot = None
+_global_bot_lock = threading.Lock()
+
+def get_global_bot():
+    """Obtiene la instancia global del bot"""
+    global _global_bot
+    if _global_bot is None:
+        with _global_bot_lock:
+            if _global_bot is None:
+                _global_bot = ProfessionalTradingBot()
+    return _global_bot
+
+# ===================================================================
 # CLASE DE BASE DE DATOS
 # ===================================================================
 
@@ -834,7 +850,7 @@ def main():
         with col2:
             st.markdown("### 🔑 Iniciar Sesión")
             
-            MASTER_PASSWORD = "Trading2025$"
+            MASTER_PASSWORD = "Trading2024$"
             
             password = st.text_input("Contraseña:", type="password", key="password_input")
             
@@ -883,11 +899,8 @@ def main():
     st.title("🧠 Bot Trading Profesional - ML + SQLite")
     st.markdown("### Machine Learning | Auto-Optimización | Backtesting")
     
-    # Inicializar bot en session_state
-    if 'bot' not in st.session_state:
-        st.session_state.bot = ProfessionalTradingBot()
-    
-    bot = st.session_state.bot
+    # Obtener bot global (persiste entre sesiones)
+    bot = get_global_bot()
     
     with st.sidebar:
         st.markdown("---")
