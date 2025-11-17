@@ -117,6 +117,68 @@ class TradingDatabase:
         )
         ''')
         
+        # Tabla de logs persistentes (NUEVO)
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp DATETIME,
+            time_str TEXT,
+            message TEXT,
+            level TEXT
+        )
+        ''')
+        
+        conn.commit()
+        conn.close()
+    
+    def save_log(self, log_data):
+        """Guarda un log en la base de datos"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+        INSERT INTO logs (timestamp, time_str, message, level)
+        VALUES (?, ?, ?, ?)
+        ''', (
+            datetime.now(),
+            log_data['time'],
+            log_data['message'],
+            log_data['level']
+        ))
+        
+        conn.commit()
+        conn.close()
+    
+    def get_recent_logs(self, limit=100):
+        """Obtiene logs recientes de la base de datos"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+        SELECT time_str, message, level FROM logs
+        ORDER BY id DESC
+        LIMIT ?
+        ''', (limit,))
+        
+        logs = []
+        for row in cursor.fetchall():
+            logs.append({
+                'time': row[0],
+                'message': row[1],
+                'level': row[2]
+            })
+        
+        conn.close()
+        return logs
+    
+    def clear_old_logs(self, days=7):
+        """Limpia logs antiguos (opcional)"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cutoff_date = datetime.now() - timedelta(days=days)
+        cursor.execute('DELETE FROM logs WHERE timestamp < ?', (cutoff_date,))
+        
         conn.commit()
         conn.close()
     
@@ -465,13 +527,22 @@ class ProfessionalTradingBot:
         self.log("💾 Base de datos conectada", "info")
     
     def log(self, message, level="info"):
-        """Registra eventos"""
+        """Registra eventos y los guarda en DB"""
         timestamp = datetime.now().strftime("%H:%M:%S")
-        self.logs.append({
+        log_entry = {
             'time': timestamp,
             'message': message,
             'level': level
-        })
+        }
+        
+        # Guardar en memoria (para visualización rápida)
+        self.logs.append(log_entry)
+        
+        # Guardar en base de datos (PERSISTENTE)
+        try:
+            self.db.save_log(log_entry)
+        except:
+            pass  # Si falla, no detener el bot
     
     def get_account_info(self):
         """Info de cuenta"""
@@ -958,7 +1029,7 @@ def main():
         with col2:
             st.markdown("### 🔑 Iniciar Sesión")
             
-            MASTER_PASSWORD = "Trading2025$"
+            MASTER_PASSWORD = "Trading2024$"
             
             password = st.text_input("Contraseña:", type="password", key="password_input")
             
@@ -1221,13 +1292,49 @@ def main():
         
         with tab2:
             st.subheader("📜 Logs en Tiempo Real")
+            
+            # Mostrar logs desde la base de datos (persistentes)
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.markdown("**Últimos 100 eventos guardados en SQLite**")
+            with col2:
+                if st.button("🗑️ Limpiar logs antiguos"):
+                    bot.db.clear_old_logs(days=7)
+                    st.success("✅ Logs >7 días eliminados")
+                    st.rerun()
+            
+            # Cargar logs desde DB
+            db_logs = bot.db.get_recent_logs(limit=100)
+            
+            # Combinar logs en memoria con logs de DB (evitar duplicados)
+            all_logs = []
+            seen_messages = set()
+            
+            # Primero los logs en memoria (más recientes)
             for log in reversed(list(bot.logs)):
-                color = {'success': 'green', 'error': 'red', 'warning': 'orange', 'info': 'blue'}.get(log['level'], 'white')
-                st.markdown(f"""
-                <div style="background: rgba(0,0,0,0.3); padding: 8px; margin: 4px 0; border-radius: 5px; border-left: 3px solid {color};">
-                    [{log['time']}] {log['message']}
-                </div>
-                """, unsafe_allow_html=True)
+                key = f"{log['time']}-{log['message']}"
+                if key not in seen_messages:
+                    all_logs.append(log)
+                    seen_messages.add(key)
+            
+            # Luego los de DB (históricos)
+            for log in db_logs:
+                key = f"{log['time']}-{log['message']}"
+                if key not in seen_messages:
+                    all_logs.append(log)
+                    seen_messages.add(key)
+            
+            # Mostrar logs
+            if all_logs:
+                for log in all_logs[:100]:  # Máximo 100 en pantalla
+                    color = {'success': 'green', 'error': 'red', 'warning': 'orange', 'info': 'blue'}.get(log['level'], 'white')
+                    st.markdown(f"""
+                    <div style="background: rgba(0,0,0,0.3); padding: 8px; margin: 4px 0; border-radius: 5px; border-left: 3px solid {color};">
+                        [{log['time']}] {log['message']}
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.info("📋 No hay logs aún. Inicia el bot para ver actividad.")
         
         with tab3:
             st.subheader("💼 Historial de Trades (SQLite)")
