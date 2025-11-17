@@ -2,6 +2,7 @@
 # BOT DE TRADING PROFESIONAL CON ML + SQLITE
 # Machine Learning, Backtesting, Auto-Optimización
 # Stop Loss Inteligente, Position Sizing Adaptativo
+# Auto-Resume para persistencia real
 # ===================================================================
 
 import streamlit as st
@@ -27,27 +28,6 @@ st.set_page_config(
     page_icon="🧠",
     layout="wide"
 )
-
-# ===================================================================
-# BOT GLOBAL (persiste entre sesiones)
-# ===================================================================
-
-# Variable global para almacenar la instancia única del bot
-if 'global_bot_instance' not in globals():
-    global_bot_instance = None
-    global_bot_lock = threading.Lock()
-
-def get_global_bot():
-    """Obtiene o crea la instancia global del bot"""
-    global global_bot_instance
-    global global_bot_lock
-    
-    if global_bot_instance is None:
-        with global_bot_lock:
-            if global_bot_instance is None:
-                global_bot_instance = ProfessionalTradingBot()
-    
-    return global_bot_instance
 
 # ===================================================================
 # CLASE DE BASE DE DATOS
@@ -1028,16 +1008,16 @@ def main():
     st.title("🧠 Bot Trading Profesional - ML + SQLite")
     st.markdown("### Machine Learning | Auto-Optimización | Backtesting")
     
-    # Obtener bot global (persiste entre sesiones)
-    bot = get_global_bot()
-    
-    # AUTO-RESUME: Intentar reanudar automáticamente
-    if 'auto_resume_checked' not in st.session_state:
-        st.session_state.auto_resume_checked = True
-        if bot.load_and_resume():
-            st.success("🔄 Bot reanudado automáticamente!")
+    # Inicializar bot en session_state para persistencia
+    if 'bot' not in st.session_state:
+        st.session_state.bot = ProfessionalTradingBot()
+        # Intentar auto-resume
+        if st.session_state.bot.load_and_resume():
+            st.success("🔄 Bot reanudado automáticamente desde estado anterior!")
             time.sleep(2)
             st.rerun()
+    
+    bot = st.session_state.bot
     
     with st.sidebar:
         st.markdown("---")
