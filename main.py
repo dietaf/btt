@@ -75,7 +75,7 @@ if password != "admin123":
     st.stop()
 
 # ===================== INTERFAZ PRINCIPAL =====================
-st.title("📈 Dashboard Profesional - Bot de Trading con ML y Optimización")
+st.title("📈 Dashboard Profesional - Bot de Trading con ML Optimizado")
 
 # Panel de configuración
 st.sidebar.header("Configuración")
@@ -95,6 +95,9 @@ detener = col2.button("DETENER")
 
 # ===================== ENTRENAR MODELO ML CON OPTIMIZACIÓN =====================
 st.subheader("Entrenando modelo ML con optimización...")
+progress_bar = st.progress(0)
+status_text = st.empty()
+
 hist_data = yf.download(pair, period="30d", interval="5m")
 if not hist_data.empty:
     hist_data['Return'] = hist_data['Close'].pct_change()
@@ -104,15 +107,22 @@ if not hist_data.empty:
     y = hist_data['Signal']
 
     param_grid = {
-        'n_estimators': [50, 100],
-        'max_depth': [3, 5, None],
-        'min_samples_split': [2, 5]
+        'n_estimators': [50],  # reducido para optimización rápida
+        'max_depth': [5, None],
+        'min_samples_split': [2]
     }
-    grid_search = GridSearchCV(RandomForestClassifier(), param_grid, cv=3, scoring='accuracy')
+
+    status_text.text("Ejecutando GridSearchCV...")
+    grid_search = GridSearchCV(RandomForestClassifier(), param_grid, cv=2, scoring='accuracy')
     grid_search.fit(X, y)
     best_params = grid_search.best_params_
     model = grid_search.best_estimator_
-    st.success(f"Modelo ML optimizado. Mejores parámetros: {best_params}")
+
+    for i in range(100):
+        progress_bar.progress(i + 1)
+        time.sleep(0.01)
+
+    status_text.text(f"Entrenamiento completado ✅ | Mejores parámetros: {best_params}")
 else:
     st.error("No se pudieron obtener datos históricos para entrenar el modelo.")
 
@@ -168,7 +178,7 @@ if iniciar:
             colB.metric("Ganancia Total ($)", f"{ganancia_total:.2f}")
             colC.metric("Confianza Promedio (%)", f"{(sum(confianzas)/len(confianzas)) if confianzas else 0:.2f}")
 
-        time.sleep(5)
+        time.sleep(2)
 
 if detener:
     st.warning("Bot detenido")
