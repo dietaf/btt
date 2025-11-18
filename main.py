@@ -528,7 +528,12 @@ class ProfessionalTradingBot:
     
     def log(self, message, level="info"):
         """Registra eventos y los guarda en DB"""
-        timestamp = datetime.now().strftime("%H:%M:%S")
+        # Convertir a hora de Adelaide (UTC+10:30)
+        from datetime import timezone, timedelta
+        adelaide_tz = timezone(timedelta(hours=10, minutes=30))
+        adelaide_time = datetime.now(adelaide_tz)
+        timestamp = adelaide_time.strftime("%H:%M:%S")
+        
         log_entry = {
             'time': timestamp,
             'message': message,
@@ -928,7 +933,8 @@ class ProfessionalTradingBot:
                             self.log(f"⚠️ Confianza {confidence*100:.0f}% < Mínimo {self.min_confidence*100:.0f}%, esperando mejor oportunidad", "warning")
                     else:
                         self.log("⏳ Sin señales, esperando...", "info")
-                   
+                    else:
+                        self.log("⏳ Sin señales, esperando...", "info")
                 
                 wait_time = 60 if "m" in self.timeframe else 300
                 self.log(f"⏰ Próxima verificación en {wait_time}s", "info")
