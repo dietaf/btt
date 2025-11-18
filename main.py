@@ -68,14 +68,14 @@ def clear_logs():
 
 # ===================== AUTENTICACIÓN =====================
 st.set_page_config(page_title="Trading Bot Dashboard", layout="wide")
-st.title("510 Acceso al Bot de Trading")
+st.title("🔐 Acceso al Bot de Trading")
 password = st.text_input("Ingrese la contraseña:", type="password")
 if password != "admin123":
     st.warning("Por favor ingrese la contraseña correcta para acceder al dashboard.")
     st.stop()
 
 # ===================== INTERFAZ PRINCIPAL =====================
-st.title("4C8 Dashboard Profesional - Bot de Trading con ML y PnL Real")
+st.title("📈 Dashboard Profesional - Bot de Trading con ML y PnL Real")
 
 # Panel de configuración
 st.sidebar.header("Configuración")
@@ -135,6 +135,7 @@ signales = []
 confianzas = []
 trades_ejecutados = 0
 ganancia_total = 0.0
+pnl_por_trade = []
 posicion_abierta = False
 precio_entrada = None
 
@@ -147,17 +148,19 @@ if iniciar:
         data = ticker.history(period="1d", interval="1m")
         if not data.empty:
             precio_actual = round(data['Close'].iloc[-1], 5)
-            features = [[data['Open'].iloc[-1], data['High'].iloc[-1], data['Low'].iloc[-1], data['Close'].iloc[-1], data['Volume'].iloc[-1]]]
-            prob = model.predict_proba(features)[0][1]
         else:
-            precio_actual = round(1.1900 + np.random.uniform(-0.0005, 0.0005), 5)
-            prob = np.random.uniform(0.4, 0.9)
+            # Simular variación si no hay cambio
+            precio_actual = precios[-1] + np.random.uniform(-0.0005, 0.0005) if precios else 1.1900
+            precio_actual = round(precio_actual, 5)
+
+        features = [[precio_actual, precio_actual, precio_actual, precio_actual, 1000]]
+        prob = model.predict_proba(features)[0][1]
 
         confianza_signal = np.random.randint(40, 90)
         precios.append(precio_actual)
         confianzas.append(confianza_signal)
 
-        # Lógica de compra/venta
+        # Lógica de compra/venta con PnL
         if not posicion_abierta:
             if prob >= probabilidad_minima or confianza_signal >= confianza_minima:
                 posicion_abierta = True
@@ -168,11 +171,11 @@ if iniciar:
                 signales.append("CANCELADO")
                 log_event(f"Trade cancelado en {precio_actual} (Confianza: {confianza_signal}%, Prob: {prob:.2f})")
         else:
-            # Condición para cerrar posición
             if prob < probabilidad_minima and confianza_signal < confianza_minima:
                 posicion_abierta = False
                 pnl = round((precio_actual - precio_entrada) * (volumen / precio_entrada), 2)
                 ganancia_total += pnl
+                pnl_por_trade.append(pnl)
                 trades_ejecutados += 1
                 signales.append("VENTA")
                 log_event(f"Venta cerrada en {precio_actual} | PnL: {pnl} (Confianza: {confianza_signal}%, Prob: {prob:.2f})")
@@ -189,11 +192,13 @@ if iniciar:
         placeholder_chart.plotly_chart(fig, use_container_width=True)
 
         # Actualizar métricas
+        pnl_promedio = round(sum(pnl_por_trade)/len(pnl_por_trade), 2) if pnl_por_trade else 0.0
         with placeholder_metrics.container():
-            colA, colB, colC = st.columns(3)
+            colA, colB, colC, colD = st.columns(4)
             colA.metric("Trades Ejecutados", trades_ejecutados)
             colB.metric("Ganancia Total ($)", f"{ganancia_total:.2f}")
-            colC.metric("Confianza Promedio (%)", f"{(sum(confianzas)/len(confianzas)) if confianzas else 0:.2f}")
+            colC.metric("PnL Promedio ($)", f"{pnl_promedio:.2f}")
+            colD.metric("Confianza Promedio (%)", f"{(sum(confianzas)/len(confianzas)) if confianzas else 0:.2f}")
 
         time.sleep(2)
 
