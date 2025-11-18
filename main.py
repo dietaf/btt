@@ -1061,7 +1061,7 @@ def main():
                     
                     Busca la línea:
                     ```python
-                    MASTER_PASSWORD = "Trading2024$"
+                    MASTER_PASSWORD = "Trading2025$"
                     ```
                     
                     Cámbiala por tu nueva contraseña, guarda y espera 2 minutos.
