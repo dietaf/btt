@@ -68,14 +68,14 @@ def clear_logs():
 
 # ===================== AUTENTICACIÓN =====================
 st.set_page_config(page_title="Trading Bot Dashboard", layout="wide")
-st.title("🔐 Acceso al Bot de Trading")
+st.title("510 Acceso al Bot de Trading")
 password = st.text_input("Ingrese la contraseña:", type="password")
 if password != "admin123":
     st.warning("Por favor ingrese la contraseña correcta para acceder al dashboard.")
     st.stop()
 
 # ===================== INTERFAZ PRINCIPAL =====================
-st.title("📈 Dashboard Profesional - Bot de Trading con ML Optimizado")
+st.title("4C8 Dashboard Profesional - Bot de Trading con ML y PnL Real")
 
 # Panel de configuración
 st.sidebar.header("Configuración")
@@ -93,7 +93,7 @@ col1, col2 = st.sidebar.columns(2)
 iniciar = col1.button("INICIAR")
 detener = col2.button("DETENER")
 
-# ===================== ENTRENAR MODELO ML CON OPTIMIZACIÓN =====================
+# ===================== ENTRENAR MODELO ML =====================
 st.subheader("Entrenando modelo ML con optimización...")
 progress_bar = st.progress(0)
 status_text = st.empty()
@@ -107,7 +107,7 @@ if not hist_data.empty:
     y = hist_data['Signal']
 
     param_grid = {
-        'n_estimators': [50],  # reducido para optimización rápida
+        'n_estimators': [50],
         'max_depth': [5, None],
         'min_samples_split': [2]
     }
@@ -135,6 +135,8 @@ signales = []
 confianzas = []
 trades_ejecutados = 0
 ganancia_total = 0.0
+posicion_abierta = False
+precio_entrada = None
 
 if iniciar:
     st.success("Bot iniciado")
@@ -155,23 +157,38 @@ if iniciar:
         precios.append(precio_actual)
         confianzas.append(confianza_signal)
 
-        if prob >= probabilidad_minima or confianza_signal >= confianza_minima:
-            signales.append("COMPRA")
-            trades_ejecutados += 1
-            ganancia_total += round((precio_actual - precios[0]) * 10000, 2)
-            log_event(f"Trade ejecutado en {precio_actual} (Confianza: {confianza_signal}%, Prob: {prob:.2f})")
+        # Lógica de compra/venta
+        if not posicion_abierta:
+            if prob >= probabilidad_minima or confianza_signal >= confianza_minima:
+                posicion_abierta = True
+                precio_entrada = precio_actual
+                signales.append("COMPRA")
+                log_event(f"Compra abierta en {precio_actual} (Confianza: {confianza_signal}%, Prob: {prob:.2f})")
+            else:
+                signales.append("CANCELADO")
+                log_event(f"Trade cancelado en {precio_actual} (Confianza: {confianza_signal}%, Prob: {prob:.2f})")
         else:
-            signales.append("CANCELADO")
-            log_event(f"Trade cancelado en {precio_actual} (Confianza: {confianza_signal}%, Prob: {prob:.2f})")
+            # Condición para cerrar posición
+            if prob < probabilidad_minima and confianza_signal < confianza_minima:
+                posicion_abierta = False
+                pnl = round((precio_actual - precio_entrada) * (volumen / precio_entrada), 2)
+                ganancia_total += pnl
+                trades_ejecutados += 1
+                signales.append("VENTA")
+                log_event(f"Venta cerrada en {precio_actual} | PnL: {pnl} (Confianza: {confianza_signal}%, Prob: {prob:.2f})")
+            else:
+                signales.append("MANTENER")
 
+        # Actualizar gráfico
         fig = go.Figure()
         fig.add_trace(go.Scatter(y=precios, mode='lines+markers', name='Precio'))
         for idx, signal in enumerate(signales):
-            color = 'green' if signal == "COMPRA" else 'red'
+            color = 'green' if signal == "COMPRA" else ('red' if signal == "VENTA" else 'gray')
             fig.add_trace(go.Scatter(x=[idx], y=[precios[idx]], mode='markers', marker=dict(color=color, size=10), name=signal))
         fig.update_layout(title="Evolución del Precio y Señales", xaxis_title="Ciclo", yaxis_title="Precio")
         placeholder_chart.plotly_chart(fig, use_container_width=True)
 
+        # Actualizar métricas
         with placeholder_metrics.container():
             colA, colB, colC = st.columns(3)
             colA.metric("Trades Ejecutados", trades_ejecutados)
