@@ -2,23 +2,44 @@
 import streamlit as st
 import sqlite3
 import time
+import os
 from datetime import datetime
 
 # ===================== CONFIGURACIÓN DE BASE DE DATOS =====================
 DB_NAME = "trading_logs.db"
 
-# Crear tabla si no existe
-conn = sqlite3.connect(DB_NAME)
-c = conn.cursor()
-c.execute("""
-CREATE TABLE IF NOT EXISTS logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    timestamp TEXT,
-    mensaje TEXT
-)
-""")
-conn.commit()
-conn.close()
+# Función para inicializar o reparar la base de datos
+def init_database():
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            mensaje TEXT
+        )
+        """)
+        conn.commit()
+        conn.close()
+    except sqlite3.DatabaseError:
+        # Si la base está corrupta, eliminar y regenerar
+        if os.path.exists(DB_NAME):
+            os.remove(DB_NAME)
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("""
+        CREATE TABLE logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            mensaje TEXT
+        )
+        """)
+        conn.commit()
+        conn.close()
+
+# Inicializar base de datos
+init_database()
 
 # ===================== FUNCIONES =====================
 def log_event(mensaje):
@@ -45,7 +66,7 @@ def clear_logs():
 
 # ===================== INTERFAZ STREAMLIT =====================
 st.set_page_config(page_title="Trading Bot", layout="wide")
-st.title("🤖 Bot de Trading - TrendShift")
+st.title("916 Bot de Trading - TrendShift")
 
 # Panel de configuración
 st.sidebar.header("Configuración")
