@@ -582,15 +582,17 @@ class ProfessionalTradingBot:
             self.log(f"⚠️ Error en ML: {str(e)}", "warning")
     
     def get_historical_data(self, pair, timeframe='1h', days=7):
-        """Obtiene datos históricos"""
+        """Obtiene datos históricos - SIN CACHE"""
         try:
             interval_map = {"5m": "5m", "15m": "15m", "1h": "1h", "4h": "1h", "1d": "1d"}
             interval = interval_map.get(timeframe, "1h")
             
+            # IMPORTANTE: No usar cache para datos frescos
             ticker = yf.Ticker(pair)
-            df = ticker.history(period=f"{days}d", interval=interval)
+            df = ticker.history(period=f"{days}d", interval=interval, prepost=False)
             
             if df.empty:
+                self.log("⚠️ Sin datos de Yahoo Finance", "warning")
                 return None
             
             df = df.rename(columns={
@@ -601,8 +603,13 @@ class ProfessionalTradingBot:
                 'Volume': 'volume'
             })
             
+            # Log para verificar actualización
+            last_time = df.index[-1]
+            self.log(f"📊 Última vela: {last_time.strftime('%Y-%m-%d %H:%M')}", "info")
+            
             return df
-        except:
+        except Exception as e:
+            self.log(f"Error datos: {str(e)}", "error")
             return None
     
     def get_current_price(self, pair):
@@ -921,7 +928,8 @@ class ProfessionalTradingBot:
                             self.log(f"⚠️ Confianza {confidence*100:.0f}% < Mínimo {self.min_confidence*100:.0f}%, esperando mejor oportunidad", "warning")
                     else:
                         self.log("⏳ Sin señales, esperando...", "info")
-                
+                    else:
+                        self.log("⏳ Sin señales, esperando...", "info")
                 
                 wait_time = 60 if "m" in self.timeframe else 300
                 self.log(f"⏰ Próxima verificación en {wait_time}s", "info")
