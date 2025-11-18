@@ -9,7 +9,6 @@ import plotly.graph_objects as go
 # ===================== CONFIGURACIÓN DE BASE DE DATOS =====================
 DB_NAME = "trading_logs.db"
 
-# Función para inicializar o reparar la base de datos
 def init_database():
     try:
         conn = sqlite3.connect(DB_NAME)
@@ -38,7 +37,6 @@ def init_database():
         conn.commit()
         conn.close()
 
-# Inicializar base de datos
 init_database()
 
 # ===================== FUNCIONES =====================
@@ -67,9 +65,7 @@ def clear_logs():
 # ===================== AUTENTICACIÓN =====================
 st.set_page_config(page_title="Trading Bot Dashboard", layout="wide")
 st.title("🔐 Acceso al Bot de Trading")
-
 password = st.text_input("Ingrese la contraseña:", type="password")
-
 if password != "admin123":
     st.warning("Por favor ingrese la contraseña correcta para acceder al dashboard.")
     st.stop()
@@ -96,17 +92,26 @@ detener = col2.button("DETENER")
 # ===================== SIMULACIÓN DE DATOS =====================
 precios = []
 signales = []
+confianzas = []
+trades_ejecutados = 0
+ganancia_total = 0.0
 
 if iniciar:
     st.success("Bot iniciado")
     log_event(f"Bot iniciado con estrategia {strategy} en {pair}")
-    for i in range(10):  # Simulación de 10 ciclos
+    for i in range(10):
         precio_actual = round(1.1900 + (i * 0.0005), 5)
-        confianza_signal = 58
+        confianza_signal = 50 + i  # Simulación confianza creciente
         precios.append(precio_actual)
-        signales.append("COMPRA" if confianza_signal >= confianza_minima else "CANCELADO")
-        log_event(f"Precio actual: {precio_actual}")
-        log_event(f"Señal detectada: {signales[-1]} (Confianza: {confianza_signal}%)")
+        confianzas.append(confianza_signal)
+        if confianza_signal >= confianza_minima:
+            signales.append("COMPRA")
+            trades_ejecutados += 1
+            ganancia_total += round((precio_actual - 1.1900) * 10000, 2)  # Simulación PnL
+            log_event(f"Trade ejecutado en {precio_actual} (Confianza: {confianza_signal}%)")
+        else:
+            signales.append("CANCELADO")
+            log_event(f"Trade cancelado en {precio_actual} (Confianza: {confianza_signal}%)")
         time.sleep(0.5)
 
 if detener:
@@ -114,11 +119,26 @@ if detener:
     log_event("Bot detenido")
 
 # ===================== DASHBOARD =====================
-st.subheader("Gráfico en tiempo real")
+st.subheader("Gráfico en tiempo real con señales")
 fig = go.Figure()
 fig.add_trace(go.Scatter(y=precios, mode='lines+markers', name='Precio'))
-fig.update_layout(title="Evolución del Precio", xaxis_title="Ciclo", yaxis_title="Precio")
+
+# Añadir señales de compra
+for idx, signal in enumerate(signales):
+    if signal == "COMPRA":
+        fig.add_trace(go.Scatter(x=[idx], y=[precios[idx]], mode='markers', marker=dict(color='green', size=10), name='Compra'))
+    else:
+        fig.add_trace(go.Scatter(x=[idx], y=[precios[idx]], mode='markers', marker=dict(color='red', size=10), name='Cancelado'))
+
+fig.update_layout(title="Evolución del Precio y Señales", xaxis_title="Ciclo", yaxis_title="Precio")
 st.plotly_chart(fig, use_container_width=True)
+
+# ===================== MÉTRICAS CLAVE =====================
+st.subheader("Métricas del Bot")
+colA, colB, colC = st.columns(3)
+colA.metric("Trades Ejecutados", trades_ejecutados)
+colB.metric("Ganancia Total ($)", f"{ganancia_total:.2f}")
+colC.metric("Confianza Promedio (%)", f"{(sum(confianzas)/len(confianzas)) if confianzas else 0:.2f}")
 
 # Mostrar tabla de logs
 st.subheader("Últimos eventos")
