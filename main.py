@@ -9,6 +9,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import GridSearchCV
 
 # ===================== CONFIGURACIÓN DE BASE DE DATOS =====================
 DB_NAME = "trading_logs.db"
@@ -74,7 +75,7 @@ if password != "admin123":
     st.stop()
 
 # ===================== INTERFAZ PRINCIPAL =====================
-st.title("📈 Dashboard Profesional - Bot de Trading con ML")
+st.title("📈 Dashboard Profesional - Bot de Trading con ML y Optimización")
 
 # Panel de configuración
 st.sidebar.header("Configuración")
@@ -86,23 +87,32 @@ st.sidebar.subheader("Parámetros Iniciales")
 volumen = st.sidebar.number_input("Volumen ($)", min_value=1000, max_value=100000, value=10000)
 risk = st.sidebar.slider("Riesgo Mínimo (%)", 0, 100, 5)
 confianza_minima = st.sidebar.slider("Confianza Mínima (%)", 0, 100, 10)
+probabilidad_minima = st.sidebar.slider("Probabilidad ML mínima", 0.0, 1.0, 0.6, 0.01)
 
 col1, col2 = st.sidebar.columns(2)
 iniciar = col1.button("INICIAR")
 detener = col2.button("DETENER")
 
-# ===================== ENTRENAR MODELO ML =====================
-st.subheader("Entrenando modelo ML...")
-hist_data = yf.download(pair, period="5d", interval="5m")
+# ===================== ENTRENAR MODELO ML CON OPTIMIZACIÓN =====================
+st.subheader("Entrenando modelo ML con optimización...")
+hist_data = yf.download(pair, period="30d", interval="5m")
 if not hist_data.empty:
     hist_data['Return'] = hist_data['Close'].pct_change()
     hist_data['Signal'] = np.where(hist_data['Return'] > 0, 1, 0)
     hist_data.dropna(inplace=True)
     X = hist_data[['Open', 'High', 'Low', 'Close', 'Volume']]
     y = hist_data['Signal']
-    model = RandomForestClassifier(n_estimators=100)
-    model.fit(X, y)
-    st.success("Modelo ML entrenado con datos históricos.")
+
+    param_grid = {
+        'n_estimators': [50, 100],
+        'max_depth': [3, 5, None],
+        'min_samples_split': [2, 5]
+    }
+    grid_search = GridSearchCV(RandomForestClassifier(), param_grid, cv=3, scoring='accuracy')
+    grid_search.fit(X, y)
+    best_params = grid_search.best_params_
+    model = grid_search.best_estimator_
+    st.success(f"Modelo ML optimizado. Mejores parámetros: {best_params}")
 else:
     st.error("No se pudieron obtener datos históricos para entrenar el modelo.")
 
@@ -126,23 +136,23 @@ if iniciar:
         if not data.empty:
             precio_actual = round(data['Close'].iloc[-1], 5)
             features = [[data['Open'].iloc[-1], data['High'].iloc[-1], data['Low'].iloc[-1], data['Close'].iloc[-1], data['Volume'].iloc[-1]]]
-            pred_signal = model.predict(features)[0]
+            prob = model.predict_proba(features)[0][1]
         else:
             precio_actual = round(1.1900 + np.random.uniform(-0.0005, 0.0005), 5)
-            pred_signal = np.random.choice([0, 1])
+            prob = np.random.uniform(0.4, 0.9)
 
         confianza_signal = np.random.randint(40, 90)
         precios.append(precio_actual)
         confianzas.append(confianza_signal)
 
-        if pred_signal == 1 and confianza_signal >= confianza_minima:
+        if prob >= probabilidad_minima or confianza_signal >= confianza_minima:
             signales.append("COMPRA")
             trades_ejecutados += 1
             ganancia_total += round((precio_actual - precios[0]) * 10000, 2)
-            log_event(f"Trade ejecutado en {precio_actual} (Confianza: {confianza_signal}%)")
+            log_event(f"Trade ejecutado en {precio_actual} (Confianza: {confianza_signal}%, Prob: {prob:.2f})")
         else:
             signales.append("CANCELADO")
-            log_event(f"Trade cancelado en {precio_actual} (Confianza: {confianza_signal}%)")
+            log_event(f"Trade cancelado en {precio_actual} (Confianza: {confianza_signal}%, Prob: {prob:.2f})")
 
         fig = go.Figure()
         fig.add_trace(go.Scatter(y=precios, mode='lines+markers', name='Precio'))
