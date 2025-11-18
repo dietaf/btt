@@ -913,7 +913,14 @@ class ProfessionalTradingBot:
                     signal, confidence = self.get_signal(df, indicators)
                     if signal != 0:
                         self.log(f"🎯 Señal: {'COMPRA' if signal == 1 else 'VENTA'} (Conf: {confidence*100:.0f}%)", "info")
-                        self.open_position(signal, current_price, indicators, confidence)
+                        
+                        # Verificar confianza ANTES de intentar abrir
+                        if confidence >= self.min_confidence:
+                            self.open_position(signal, current_price, indicators, confidence)
+                        else:
+                            self.log(f"⚠️ Confianza {confidence*100:.0f}% < Mínimo {self.min_confidence*100:.0f}%, esperando mejor oportunidad", "warning")
+                    else:
+                        self.log("⏳ Sin señales, esperando...", "info")
                     else:
                         self.log("⏳ Sin señales, esperando...", "info")
                 
@@ -1029,7 +1036,7 @@ def main():
         with col2:
             st.markdown("### 🔑 Iniciar Sesión")
             
-            MASTER_PASSWORD = "Trading2025$"
+            MASTER_PASSWORD = "Trading2024$"
             
             password = st.text_input("Contraseña:", type="password", key="password_input")
             
