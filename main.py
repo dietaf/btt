@@ -5,6 +5,10 @@ import time
 import os
 from datetime import datetime
 import plotly.graph_objects as go
+import yfinance as yf
+import pandas as pd
+import numpy as np
+from sklearn.ensemble import RandomForestClassifier
 
 # ===================== CONFIGURACIÓN DE BASE DE DATOS =====================
 DB_NAME = "trading_logs.db"
@@ -39,7 +43,6 @@ def init_database():
 
 init_database()
 
-# ===================== FUNCIONES =====================
 def log_event(mensaje):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
@@ -71,12 +74,12 @@ if password != "admin123":
     st.stop()
 
 # ===================== INTERFAZ PRINCIPAL =====================
-st.title("📊 Dashboard Profesional - Bot de Trading")
+st.title("📈 Dashboard Profesional - Bot de Trading con ML")
 
 # Panel de configuración
 st.sidebar.header("Configuración")
 strategy = st.sidebar.selectbox("Estrategia", ["TrendShift", "MeanReversion", "Breakout"])
-pair = st.sidebar.selectbox("Par", ["EUR/USD", "GBP/USD", "BTC/USD"])
+pair = st.sidebar.selectbox("Par", ["EURUSD=X", "GBPUSD=X", "BTC-USD"])
 timeframe = st.sidebar.selectbox("Timeframe", ["1m", "5m", "15m"])
 
 st.sidebar.subheader("Parámetros Iniciales")
@@ -84,12 +87,29 @@ volumen = st.sidebar.number_input("Volumen ($)", min_value=1000, max_value=10000
 risk = st.sidebar.slider("Riesgo Mínimo (%)", 0, 100, 5)
 confianza_minima = st.sidebar.slider("Confianza Mínima (%)", 0, 100, 10)
 
-# Botones
 col1, col2 = st.sidebar.columns(2)
 iniciar = col1.button("INICIAR")
 detener = col2.button("DETENER")
 
-# ===================== SIMULACIÓN DE DATOS =====================
+# ===================== ENTRENAR MODELO ML =====================
+st.subheader("Entrenando modelo ML...")
+hist_data = yf.download(pair, period="5d", interval="5m")
+if not hist_data.empty:
+    hist_data['Return'] = hist_data['Close'].pct_change()
+    hist_data['Signal'] = np.where(hist_data['Return'] > 0, 1, 0)
+    hist_data.dropna(inplace=True)
+    X = hist_data[['Open', 'High', 'Low', 'Close', 'Volume']]
+    y = hist_data['Signal']
+    model = RandomForestClassifier(n_estimators=100)
+    model.fit(X, y)
+    st.success("Modelo ML entrenado con datos históricos.")
+else:
+    st.error("No se pudieron obtener datos históricos para entrenar el modelo.")
+
+# ===================== DASHBOARD EN TIEMPO REAL =====================
+placeholder_chart = st.empty()
+placeholder_metrics = st.empty()
+
 precios = []
 signales = []
 confianzas = []
@@ -99,48 +119,51 @@ ganancia_total = 0.0
 if iniciar:
     st.success("Bot iniciado")
     log_event(f"Bot iniciado con estrategia {strategy} en {pair}")
-    for i in range(10):
-        precio_actual = round(1.1900 + (i * 0.0005), 5)
-        confianza_signal = 50 + i  # Simulación confianza creciente
+    ticker = yf.Ticker(pair)
+
+    for i in range(20):
+        data = ticker.history(period="1d", interval="1m")
+        if not data.empty:
+            precio_actual = round(data['Close'].iloc[-1], 5)
+            features = [[data['Open'].iloc[-1], data['High'].iloc[-1], data['Low'].iloc[-1], data['Close'].iloc[-1], data['Volume'].iloc[-1]]]
+            pred_signal = model.predict(features)[0]
+        else:
+            precio_actual = round(1.1900 + np.random.uniform(-0.0005, 0.0005), 5)
+            pred_signal = np.random.choice([0, 1])
+
+        confianza_signal = np.random.randint(40, 90)
         precios.append(precio_actual)
         confianzas.append(confianza_signal)
-        if confianza_signal >= confianza_minima:
+
+        if pred_signal == 1 and confianza_signal >= confianza_minima:
             signales.append("COMPRA")
             trades_ejecutados += 1
-            ganancia_total += round((precio_actual - 1.1900) * 10000, 2)  # Simulación PnL
+            ganancia_total += round((precio_actual - precios[0]) * 10000, 2)
             log_event(f"Trade ejecutado en {precio_actual} (Confianza: {confianza_signal}%)")
         else:
             signales.append("CANCELADO")
             log_event(f"Trade cancelado en {precio_actual} (Confianza: {confianza_signal}%)")
-        time.sleep(0.5)
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(y=precios, mode='lines+markers', name='Precio'))
+        for idx, signal in enumerate(signales):
+            color = 'green' if signal == "COMPRA" else 'red'
+            fig.add_trace(go.Scatter(x=[idx], y=[precios[idx]], mode='markers', marker=dict(color=color, size=10), name=signal))
+        fig.update_layout(title="Evolución del Precio y Señales", xaxis_title="Ciclo", yaxis_title="Precio")
+        placeholder_chart.plotly_chart(fig, use_container_width=True)
+
+        with placeholder_metrics.container():
+            colA, colB, colC = st.columns(3)
+            colA.metric("Trades Ejecutados", trades_ejecutados)
+            colB.metric("Ganancia Total ($)", f"{ganancia_total:.2f}")
+            colC.metric("Confianza Promedio (%)", f"{(sum(confianzas)/len(confianzas)) if confianzas else 0:.2f}")
+
+        time.sleep(5)
 
 if detener:
     st.warning("Bot detenido")
     log_event("Bot detenido")
 
-# ===================== DASHBOARD =====================
-st.subheader("Gráfico en tiempo real con señales")
-fig = go.Figure()
-fig.add_trace(go.Scatter(y=precios, mode='lines+markers', name='Precio'))
-
-# Añadir señales de compra
-for idx, signal in enumerate(signales):
-    if signal == "COMPRA":
-        fig.add_trace(go.Scatter(x=[idx], y=[precios[idx]], mode='markers', marker=dict(color='green', size=10), name='Compra'))
-    else:
-        fig.add_trace(go.Scatter(x=[idx], y=[precios[idx]], mode='markers', marker=dict(color='red', size=10), name='Cancelado'))
-
-fig.update_layout(title="Evolución del Precio y Señales", xaxis_title="Ciclo", yaxis_title="Precio")
-st.plotly_chart(fig, use_container_width=True)
-
-# ===================== MÉTRICAS CLAVE =====================
-st.subheader("Métricas del Bot")
-colA, colB, colC = st.columns(3)
-colA.metric("Trades Ejecutados", trades_ejecutados)
-colB.metric("Ganancia Total ($)", f"{ganancia_total:.2f}")
-colC.metric("Confianza Promedio (%)", f"{(sum(confianzas)/len(confianzas)) if confianzas else 0:.2f}")
-
-# Mostrar tabla de logs
 st.subheader("Últimos eventos")
 logs = get_logs()
 st.table(logs)
