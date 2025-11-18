@@ -4,6 +4,7 @@ import sqlite3
 import time
 import os
 from datetime import datetime
+import plotly.graph_objects as go
 
 # ===================== CONFIGURACIÓN DE BASE DE DATOS =====================
 DB_NAME = "trading_logs.db"
@@ -23,7 +24,6 @@ def init_database():
         conn.commit()
         conn.close()
     except sqlite3.DatabaseError:
-        # Si la base está corrupta, eliminar y regenerar
         if os.path.exists(DB_NAME):
             os.remove(DB_NAME)
         conn = sqlite3.connect(DB_NAME)
@@ -64,9 +64,18 @@ def clear_logs():
     conn.commit()
     conn.close()
 
-# ===================== INTERFAZ STREAMLIT =====================
-st.set_page_config(page_title="Trading Bot", layout="wide")
-st.title("916 Bot de Trading - TrendShift")
+# ===================== AUTENTICACIÓN =====================
+st.set_page_config(page_title="Trading Bot Dashboard", layout="wide")
+st.title("🔐 Acceso al Bot de Trading")
+
+password = st.text_input("Ingrese la contraseña:", type="password")
+
+if password != "admin123":
+    st.warning("Por favor ingrese la contraseña correcta para acceder al dashboard.")
+    st.stop()
+
+# ===================== INTERFAZ PRINCIPAL =====================
+st.title("📊 Dashboard Profesional - Bot de Trading")
 
 # Panel de configuración
 st.sidebar.header("Configuración")
@@ -84,32 +93,37 @@ col1, col2 = st.sidebar.columns(2)
 iniciar = col1.button("INICIAR")
 detener = col2.button("DETENER")
 
-# ===================== LÓGICA DEL BOT =====================
+# ===================== SIMULACIÓN DE DATOS =====================
+precios = []
+signales = []
+
 if iniciar:
     st.success("Bot iniciado")
-    log_event("Bot iniciado con estrategia {} en {}".format(strategy, pair))
-    for i in range(5):  # Simulación de 5 ciclos
+    log_event(f"Bot iniciado con estrategia {strategy} en {pair}")
+    for i in range(10):  # Simulación de 10 ciclos
         precio_actual = round(1.1900 + (i * 0.0005), 5)
-        confianza_signal = 58  # Simulación de confianza
+        confianza_signal = 58
+        precios.append(precio_actual)
+        signales.append("COMPRA" if confianza_signal >= confianza_minima else "CANCELADO")
         log_event(f"Precio actual: {precio_actual}")
-        log_event(f"Señal detectada: COMPRA (Confianza: {confianza_signal}%)")
-
-        if confianza_signal >= confianza_minima:
-            log_event("✅ Trade ejecutado (Confianza suficiente)")
-        else:
-            log_event("❌ Trade cancelado (Confianza muy baja)")
-
-        time.sleep(1)
+        log_event(f"Señal detectada: {signales[-1]} (Confianza: {confianza_signal}%)")
+        time.sleep(0.5)
 
 if detener:
     st.warning("Bot detenido")
     log_event("Bot detenido")
 
-# ===================== MOSTRAR LOGS =====================
-st.subheader("Últimos 100 eventos guardados en SQLite")
+# ===================== DASHBOARD =====================
+st.subheader("Gráfico en tiempo real")
+fig = go.Figure()
+fig.add_trace(go.Scatter(y=precios, mode='lines+markers', name='Precio'))
+fig.update_layout(title="Evolución del Precio", xaxis_title="Ciclo", yaxis_title="Precio")
+st.plotly_chart(fig, use_container_width=True)
+
+# Mostrar tabla de logs
+st.subheader("Últimos eventos")
 logs = get_logs()
-for ts, msg in logs:
-    st.text(f"[{ts}] {msg}")
+st.table(logs)
 
 if st.button("Limpiar logs antiguos"):
     clear_logs()
