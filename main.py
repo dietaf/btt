@@ -921,8 +921,7 @@ class ProfessionalTradingBot:
                             self.log(f"⚠️ Confianza {confidence*100:.0f}% < Mínimo {self.min_confidence*100:.0f}%, esperando mejor oportunidad", "warning")
                     else:
                         self.log("⏳ Sin señales, esperando...", "info")
-                    else:
-                        self.log("⏳ Sin señales, esperando...", "info")
+                  
                 
                 wait_time = 60 if "m" in self.timeframe else 300
                 self.log(f"⏰ Próxima verificación en {wait_time}s", "info")
