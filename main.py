@@ -1036,7 +1036,7 @@ def main():
         with col2:
             st.markdown("### 🔑 Iniciar Sesión")
             
-            MASTER_PASSWORD = "Trading2024$"
+            MASTER_PASSWORD = "Trading2025$"
             
             password = st.text_input("Contraseña:", type="password", key="password_input")
             
@@ -1061,7 +1061,7 @@ def main():
                     
                     Busca la línea:
                     ```python
-                    MASTER_PASSWORD = "Trading2025$"
+                    MASTER_PASSWORD = "Trading2024$"
                     ```
                     
                     Cámbiala por tu nueva contraseña, guarda y espera 2 minutos.
